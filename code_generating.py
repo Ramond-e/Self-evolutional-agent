@@ -103,15 +103,31 @@ def generate_code(language: str, usage_guide: str, user_question: str, search_ke
     5. Return ONLY the code implementation
     6. NO documentation, explanations, or markdown
     7. Make the tool flexible enough to handle various use cases
+    8. IMPORTANT: The tool should both PRINT results AND RETURN them as a dictionary or structured format
     
     Example format:
     import xyz
     
-    def main():
+    def get_data():
         # Get generic inputs that work for any use case
         param1 = input("Enter [generic parameter name]: ")
         param2 = input("Enter [another generic parameter]: ")
+        
         # implementation that works for ANY input
+        result = {{"key": "value", "data": "..."}}
+        
+        # Print for user visibility
+        print("Result:", result)
+        
+        # Return for programmatic access
+        return result
+    
+    def main():
+        result = get_data()
+        # Save result for other tools to access
+        import json
+        with open('tool_output.json', 'w') as f:
+            json.dump(result, f)
     
     if __name__ == "__main__":
         main()

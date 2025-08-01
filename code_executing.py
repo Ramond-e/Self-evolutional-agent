@@ -41,13 +41,13 @@ def install_dependencies(install_command: str) -> Tuple[bool, str]:
         error_msg = f"Error during dependency installation: {str(e)}"
         return False, error_msg
 
-def execute_python_code(file_name: str) -> Tuple[bool, Union[str, object]]:
+def execute_python_code(file_name: str, capture_output: bool = False) -> Tuple[bool, Union[str, object]]:
     """
     Execute a Python file from the tools directory and return its output.
-    Runs in interactive mode with terminal access while still capturing output.
     
     Args:
         file_name (str): Name of the Python file to execute (must be in tools directory)
+        capture_output (bool): If True, captures output; if False, allows interactive execution
     
     Returns:
         Tuple[bool, Union[str, object]]: A tuple containing:
@@ -64,16 +64,30 @@ def execute_python_code(file_name: str) -> Tuple[bool, Union[str, object]]:
             error_msg = f"File not found: {file_path}"
             return False, error_msg
             
-        # Run script with full terminal access
-        process = subprocess.run(
-            [sys.executable, file_path],
-            shell=True  # Enable terminal interaction
-        )
-        
-        if process.returncode == 0:
-            return True, "Script execution completed"
+        if capture_output:
+            # Run script and capture output
+            process = subprocess.run(
+                [sys.executable, "-u", file_path],  # -u for unbuffered output
+                capture_output=True,
+                text=True,
+                shell=False
+            )
+            
+            if process.returncode == 0:
+                return True, process.stdout
+            else:
+                return False, process.stderr or "Script execution failed"
         else:
-            return False, "Script execution failed"
+            # Run script with full terminal access (for interactive input)
+            process = subprocess.run(
+                [sys.executable, file_path],
+                shell=True  # Enable terminal interaction
+            )
+            
+            if process.returncode == 0:
+                return True, "Script execution completed"
+            else:
+                return False, "Script execution failed"
             
     except Exception as e:
         error_msg = f"Error during code execution: {str(e)}"

@@ -59,9 +59,17 @@ def analyze_task(task: str) -> Dict[str, Union[list, str]]:
     """
     prompt = f"""
     Analyze the following task and return a JSON object with three fields:
-    1. "steps": An array of strings describing the steps needed to solve the task
-    2. "required_tool": A string containing either a single tool name that would be helpful for searching (e.g. "youtube transcript", "stock price free") or "no_extra_tools_needed" if no external tool is required
-    3. "tool_general_description": A general description of what the tool should do, focusing on universal functionality rather than the specific query. This should describe the tool's general purpose.
+    1. "steps": An array of step objects, each containing:
+       - "description": What needs to be done in this step
+       - "requires_tool": true/false - whether this step needs an external tool
+       - "tool_type": The type of tool needed (e.g. "weather api", "stock api", "no_tool") for this specific step
+    2. "main_required_tool": The primary tool needed for the task (for searching)
+    3. "tool_general_description": A general description of what the main tool should do
+    
+    IMPORTANT: Steps should be a TODO list where:
+    - Each step is actionable and specific
+    - Steps may or may not require tools
+    - The final step should usually be "Summarize and present the answer to the user"
     
     The JSON must:
     - Use double quotes for all strings and property names
@@ -70,37 +78,70 @@ def analyze_task(task: str) -> Dict[str, Union[list, str]]:
     - Have no comments or additional text
     
     Example 1:
-    For task "In the YouTube 360 VR video from March 2018 narrated by the voice actor of Lord of the Rings' Gollum, what number was mentioned by the narrator directly after dinosaurs were first shown in the video?", return:
+    For task "What's the weather like in Tokyo?", return:
     {{
         "steps": [
-            "Extract subtitles from the YouTube video",
-            "Analyze subtitles to find when dinosaurs are first mentioned",
-            "Identify the number mentioned immediately after"
+            {{
+                "description": "Get current weather data for Tokyo",
+                "requires_tool": true,
+                "tool_type": "weather api"
+            }},
+            {{
+                "description": "Summarize the weather information and present to user",
+                "requires_tool": false,
+                "tool_type": "no_tool"
+            }}
         ],
-        "required_tool": "youtube transcript",
-        "tool_general_description": "A tool that can extract and retrieve transcripts/subtitles from any YouTube video by URL or video ID"
+        "main_required_tool": "weather api",
+        "tool_general_description": "A tool that fetches current weather data for any location"
     }}
     
     Example 2:
     For task "What is the latest stock price of NVIDIA (NVDA)?", return:
     {{
         "steps": [
-            "Fetch current stock price data for NVIDIA (NVDA)",
-            "Extract and return the latest price"
+            {{
+                "description": "Fetch current stock price data for NVIDIA (NVDA)",
+                "requires_tool": true,
+                "tool_type": "stock price api"
+            }},
+            {{
+                "description": "Format and present the stock price to user",
+                "requires_tool": false,
+                "tool_type": "no_tool"
+            }}
         ],
-        "required_tool": "stock price api free",
+        "main_required_tool": "stock price api free",
         "tool_general_description": "A tool that fetches real-time stock price data for any given stock ticker symbol"
     }}
     
     Example 3:
-    For task "什么是大模型", return:
+    For task "Compare the weather in Tokyo and New York", return:
     {{
         "steps": [
-            "Access knowledge base for information about large language models",
-            "Formulate comprehensive explanation"
+            {{
+                "description": "Get current weather data for Tokyo",
+                "requires_tool": true,
+                "tool_type": "weather api"
+            }},
+            {{
+                "description": "Get current weather data for New York",
+                "requires_tool": true,
+                "tool_type": "weather api"
+            }},
+            {{
+                "description": "Compare the weather conditions between both cities",
+                "requires_tool": false,
+                "tool_type": "no_tool"
+            }},
+            {{
+                "description": "Present the comparison results to user",
+                "requires_tool": false,
+                "tool_type": "no_tool"
+            }}
         ],
-        "required_tool": "no_extra_tools_needed",
-        "tool_general_description": "no_extra_tools_needed"
+        "main_required_tool": "weather api",
+        "tool_general_description": "A tool that fetches current weather data for any location"
     }}
     
     Now analyze this task and return a properly formatted JSON object:

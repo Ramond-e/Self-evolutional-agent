@@ -1,4 +1,5 @@
 import os
+import subprocess
 from typing import Dict, Union, List, Optional
 from task_analyzer import analyze_task, get_model_response
 from tools_managing import search_similar_tool, list_available_tools, save_tool_code, vectorize_description, generate_code_description
@@ -33,7 +34,7 @@ class AlitaManager:
 
     def handle_task(self, user_input: str) -> str:
         """
-        Main method to handle user tasks.
+        Main method to handle user tasks step by step.
         
         Args:
             user_input (str): User's question or command
@@ -47,26 +48,88 @@ class AlitaManager:
                 return self.display_tools()
 
             # Analyze the task
+            print("🧠 Analyzing your request...")
             analysis = analyze_task(user_input)
             steps = analysis['steps']
-            required_tool = analysis['required_tool']
+            main_required_tool = analysis.get('main_required_tool', 'no_extra_tools_needed')
             tool_general_description = analysis.get('tool_general_description', '')
 
-            # If no tool needed, use LLM directly
-            if required_tool == "no_extra_tools_needed":
-                print("💭 Analyzing your question...")
-                return self._generate_direct_response(user_input)
+            # Display task breakdown
+            print("\n📋 Task Breakdown:")
+            print("=" * 50)
+            for i, step in enumerate(steps, 1):
+                print(f"  {i}. [ ] {step['description']}")
+            print("=" * 50)
 
-            # Check if we have a similar tool
-            print("🔍 Searching for existing tools...")
-            existing_tool = search_similar_tool(required_tool)
-            if existing_tool:
-                print(f"✅ Found existing tool: {existing_tool}")
-                return self._execute_existing_tool(existing_tool, user_input)
+            # Store all console output for reference
+            step_outputs = []
+            
+            # Execute each step
+            results = []
+            for i, step in enumerate(steps, 1):
+                print(f"\n🔄 Step {i}: {step['description']}")
+                
+                # Capture console output for this step
+                import io
+                import sys
+                old_stdout = sys.stdout
+                sys.stdout = mystdout = io.StringIO()
+                
+                if step['requires_tool']:
+                    # This step needs a tool
+                    tool_type = step.get('tool_type', main_required_tool)
+                    
+                    # Check for existing tool
+                    print("🔍 Searching for required tool...")
+                    existing_tool = search_similar_tool(tool_type)
+                    
+                    # Reset stdout to show tool execution
+                    sys.stdout = old_stdout
+                    
+                    if existing_tool:
+                        print(f"✅ Found existing tool: {existing_tool}")
+                        result = self._execute_existing_tool(existing_tool, user_input)
+                        results.append(result)
+                    else:
+                        # Need to create new tool
+                        print("🚀 Creating new tool...")
+                        result = self._create_and_execute_new_tool(
+                            user_input, [step], tool_type, tool_general_description
+                        )
+                        results.append(result)
+                else:
+                    # Reset stdout
+                    sys.stdout = old_stdout
+                    # This step doesn't need a tool, just process it
+                    print("💭 Processing step...")
+                    results.append(f"Step {i} completed")
+                
+                # Store the console output
+                step_outputs.append(mystdout.getvalue())
+                
+                # Update progress
+                print(f"\n📋 Progress Update:")
+                print("=" * 50)
+                for j, s in enumerate(steps, 1):
+                    if j <= i:
+                        print(f"  {j}. [✓] {s['description']}")
+                    else:
+                        print(f"  {j}. [ ] {s['description']}")
+                print("=" * 50)
 
-            # Search for and create new tool
-            print("🚀 Creating new tool for your task...")
-            return self._create_and_execute_new_tool(user_input, steps, required_tool, tool_general_description)
+            # Final step: Summarize results
+            print("\n🎯 Generating final answer...")
+            final_answer = self._generate_final_answer(user_input, steps, results, step_outputs)
+            
+            # Clean up output file after processing
+            output_file = 'tool_output.json'
+            if os.path.exists(output_file):
+                try:
+                    os.remove(output_file)
+                except:
+                    pass
+            
+            return final_answer
 
         except Exception as e:
             return f"❌ An error occurred: {str(e)}"
@@ -79,8 +142,68 @@ class AlitaManager:
         """
         return get_model_response(prompt)
 
+    def _execute_tool_with_capture(self, tool_filename: str, tool_name: str) -> str:
+        """Execute a tool and capture its output using a wrapper script."""
+        import tempfile
+        import json
+        
+        # Create a wrapper script that captures output
+        wrapper_code = f"""
+import sys
+import io
+import subprocess
+
+# Run the tool and capture output
+result = subprocess.run(
+    [sys.executable, "tools/{tool_filename}"],
+    capture_output=True,
+    text=True
+)
+
+# Save the output
+output_data = {{
+    "stdout": result.stdout,
+    "stderr": result.stderr,
+    "returncode": result.returncode
+}}
+
+# Print for capture
+print("===OUTPUT_START===")
+print(result.stdout)
+print("===OUTPUT_END===")
+"""
+        
+        # Write wrapper to temp file
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+            f.write(wrapper_code)
+            wrapper_path = f.name
+        
+        try:
+            # Execute wrapper
+            result = subprocess.run(
+                [sys.executable, wrapper_path],
+                capture_output=True,
+                text=True
+            )
+            
+            # Extract output
+            if "===OUTPUT_START===" in result.stdout and "===OUTPUT_END===" in result.stdout:
+                start = result.stdout.find("===OUTPUT_START===") + len("===OUTPUT_START===")
+                end = result.stdout.find("===OUTPUT_END===")
+                captured_output = result.stdout[start:end].strip()
+                return captured_output
+            else:
+                # Fallback: just run interactively
+                success, output = execute_python_code(tool_filename, capture_output=False)
+                return "Tool executed (interactive mode). Check console for output."
+                
+        finally:
+            # Clean up temp file
+            if os.path.exists(wrapper_path):
+                os.unlink(wrapper_path)
+    
     def _execute_existing_tool(self, tool_name: str, user_input: str) -> str:
-        """Execute an existing tool."""
+        """Execute an existing tool and return its output."""
         try:
             # Get the actual tool information
             tools = list_available_tools()
@@ -95,29 +218,85 @@ class AlitaManager:
                     break
             
             if not matching_tool:
-                return f"❌ Tool '{tool_name}' not found in available tools"
+                return f"Tool '{tool_name}' not found"
             
-            print(f"🎯 Executing tool: {matching_tool['name']}")
-            print(f"📝 Description: {matching_tool['description']}")
+            print(f"   🎯 Executing tool: {matching_tool['name']}")
             
-            # Execute the tool using the actual filename
-            success, output = execute_python_code(matching_tool['filename'])
+            # Remove any existing output file
+            output_file = 'tool_output.json'
+            if os.path.exists(output_file):
+                os.remove(output_file)
+            
+            # Execute the tool interactively (for user input)
+            success, output = execute_python_code(matching_tool['filename'], capture_output=False)
             
             if not success:
-                return f"❌ Failed to execute tool: {output}"
-                
-            # Tool output has been printed directly to console
-            return "✅ Tool execution completed successfully!"
+                return f"Failed to execute tool: {output}"
+            
+            # Try to read output from file if tool saved it
+            result_message = f"Tool {matching_tool['name']} executed successfully."
+            if os.path.exists(output_file):
+                try:
+                    import json
+                    with open(output_file, 'r', encoding='utf-8') as f:
+                        tool_output = json.load(f)
+                    result_message += f" Output data: {json.dumps(tool_output, ensure_ascii=False)}"
+                    # Don't remove the file yet, let other steps use it if needed
+                except Exception as e:
+                    result_message += f" (Note: Could not read structured output: {str(e)})"
+            else:
+                result_message += " Please check the console output above for results."
+            
+            return result_message
             
         except Exception as e:
-            return f"❌ Error executing tool: {str(e)}"
+            return f"Error executing tool: {str(e)}"
 
-    def _create_and_execute_new_tool(self, user_input: str, steps: List[str], required_tool: str, tool_general_description: str) -> str:
+    def _generate_final_answer(self, user_input: str, steps: List[dict], results: List[str], step_outputs: List[str] = None) -> str:
+        """Generate final answer based on all step results."""
+        prompt = f"""
+        Based on the following task execution results, provide a clear and concise answer to the user's question.
+        
+        User Question: {user_input}
+        
+        Executed Steps and Results:
+        """
+        
+        for i, (step, result) in enumerate(zip(steps, results), 1):
+            prompt += f"\nStep {i}: {step['description']}"
+            prompt += f"\nResult: {result}"
+            
+            # Include console output if available
+            if step_outputs and i-1 < len(step_outputs) and step_outputs[i-1]:
+                prompt += f"\nConsole Output: {step_outputs[i-1]}"
+            
+            prompt += "\n"
+        
+        prompt += """
+        Please provide a comprehensive answer IN CHINESE that:
+        1. Directly addresses the user's question
+        2. Extracts and uses any specific data from "Output data:" in the results if available
+        3. Is clear, natural, and conversational
+        4. Includes all relevant details from the tool execution
+        
+        IMPORTANT: 
+        - Look for "Output data:" in the results above - it may contain JSON data
+        - If there was an error during tool execution, explain what happened
+        - Focus ONLY on what the user asked about, not other topics
+        - Use the actual data in your response if available
+        - If data retrieval failed, explain why and provide alternatives
+        """
+        
+        return get_model_response(prompt)
+
+    def _create_and_execute_new_tool(self, user_input: str, steps: List[dict], required_tool: str, tool_general_description: str) -> str:
         """Search for, create, and execute a new tool."""
         try:
             # Find best tool on GitHub
-            print("🔎 Searching GitHub for suitable tools...")
-            tool_info = find_best_tool(user_input, steps, required_tool)
+            print("   🔎 Searching GitHub for suitable tools...")
+            # Convert steps to string list for find_best_tool
+            step_descriptions = [step['description'] for step in steps] if isinstance(steps[0], dict) else steps
+            tool_info = find_best_tool(user_input, step_descriptions, required_tool)
             if tool_info['score'] == 0:
                 return "❌ Could not find a suitable tool for this task."
 
@@ -126,26 +305,26 @@ class AlitaManager:
             install_cmds = clean_and_validate_commands(install_cmds)
 
             # Ask user for installation approval
-            print(f"\n🎉 Found tool: {tool_info['name']}")
-            print(f"📝 Description: {tool_info['description']}")
-            print("\n📦 Installation commands:")
+            print(f"\n   🎉 Found tool: {tool_info['name']}")
+            print(f"   📝 Description: {tool_info['description']}")
+            print("\n   📦 Installation commands:")
             for cmd in install_cmds:
-                print(f"   🔧 {cmd}")
-            approval = input("\n❓ Proceed with installation? (y/n): ")
+                print(f"      🔧 {cmd}")
+            approval = input("\n   ❓ Proceed with installation? (y/n): ")
             
             if approval.lower() != 'y':
-                return "❌ Tool installation cancelled."
+                return "Tool installation cancelled."
 
             # Install dependencies
-            print("⚡ Installing dependencies...")
+            print("   ⚡ Installing dependencies...")
             for cmd in install_cmds:
-                print(f"   ⬇️ Running: {cmd}")
+                print(f"      ⬇️ Running: {cmd}")
                 success, output = install_dependencies(cmd)
                 if not success:
-                    return f"❌ Failed to install dependencies: {output}"
+                    return f"Failed to install dependencies: {output}"
 
             # Generate and validate code
-            print("🎨 Generating code...")
+            print("   🎨 Generating code...")
             code = generate_code(
                 language="python",
                 usage_guide=tool_info['usage'],
@@ -154,7 +333,7 @@ class AlitaManager:
                 tool_general_description=tool_general_description
             )
             
-            print("🔍 Validating code...")
+            print("   🔍 Validating code...")
             code = clean_and_validate_code(
                 code=code,
                 language="python",
@@ -165,10 +344,10 @@ class AlitaManager:
             )
 
             if not code:
-                return "❌ Failed to generate valid code."
+                return "Failed to generate valid code."
 
             # Generate tool description and save
-            print("📝 Generating tool description...")
+            print("   📝 Generating tool description...")
             description = generate_code_description(
                 user_question=user_input,
                 required_tool=required_tool,
@@ -178,20 +357,20 @@ class AlitaManager:
             )
 
             # Save and vectorize tool
-            print("💾 Saving tool...")
+            print("   💾 Saving tool...")
             tool_name = save_tool_code(description, code, tool_info['name'])
-            print("🧠 Vectorizing tool for future use...")
+            print("   🧠 Vectorizing tool for future use...")
             vectorize_description(description, tool_info['name'])
 
             # Execute new tool
-            print(f"🚀 Executing new tool: {tool_name}")
-            success, _ = execute_python_code(f"{tool_name}.py")
+            print(f"   🚀 Executing new tool: {tool_name}")
+            success, output = execute_python_code(f"{tool_name}.py")
             
             if not success:
-                return "❌ Failed to execute new tool"
+                return f"Failed to execute new tool: {output}"
                 
-            # Tool output has been printed directly to console
-            return "✅ Tool execution completed successfully!"
+            # Return execution result
+            return f"New tool {tool_name} created and executed successfully. Output captured."
 
         except Exception as e:
             return f"❌ Error creating/executing tool: {str(e)}"
