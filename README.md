@@ -83,12 +83,11 @@ Edit the `.env` file and add your API keys:
 OPENROUTER_API_KEY=your_openrouter_api_key_here
 OPENROUTER_API_BASE_URL=https://openrouter.ai/api/v1/chat/completions
 
-# GitHub API Configuration  
+# GitHub API Configuration
 GITHUB_API_TOKEN=your_github_api_token_here
-
-# OpenAI API Configuration
-OPENAI_API_KEY=your_openai_api_key_here
 ```
+
+> **⚠️ Security Note**: Never commit your actual API keys to version control. The `.env` file is already included in `.gitignore` to prevent accidental commits.
 
 ### 4. Install Dependencies
 ```bash
@@ -109,6 +108,11 @@ source alita-env/bin/activate
 # Install dependencies
 pip install -r requirements.txt
 ```
+
+> **🔑 API Keys Setup**:
+> - **OpenRouter**: Required for AI model access
+> - **GitHub**: Required for searching and downloading tools
+> - Keep your API keys secure and never share them publicly
 
 ## 🎮 Usage
 
@@ -156,13 +160,12 @@ python manager.py
 1. **OpenRouter API** - For language model access
    - Sign up at [OpenRouter.ai](https://openrouter.ai/)
    - Get your API key from the dashboard
+   - Used for accessing various AI models through a unified interface
 
-2. **GitHub API** - For tool searching
+2. **GitHub API** - For tool searching and repository access
    - Create a personal access token at [GitHub Settings](https://github.com/settings/tokens)
    - No special permissions required for public repository access
-
-3. **OpenAI API** (Optional) - Alternative LLM provider
-   - Get your API key from [OpenAI Platform](https://platform.openai.com/api-keys)
+   - Used to search for and download relevant tools from GitHub repositories
 
 ## 🏗️ How It Works
 
