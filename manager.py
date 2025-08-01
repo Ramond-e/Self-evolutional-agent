@@ -50,6 +50,7 @@ class AlitaManager:
             analysis = analyze_task(user_input)
             steps = analysis['steps']
             required_tool = analysis['required_tool']
+            tool_general_description = analysis.get('tool_general_description', '')
 
             # If no tool needed, use LLM directly
             if required_tool == "no_extra_tools_needed":
@@ -65,7 +66,7 @@ class AlitaManager:
 
             # Search for and create new tool
             print("🚀 Creating new tool for your task...")
-            return self._create_and_execute_new_tool(user_input, steps, required_tool)
+            return self._create_and_execute_new_tool(user_input, steps, required_tool, tool_general_description)
 
         except Exception as e:
             return f"❌ An error occurred: {str(e)}"
@@ -111,7 +112,7 @@ class AlitaManager:
         except Exception as e:
             return f"❌ Error executing tool: {str(e)}"
 
-    def _create_and_execute_new_tool(self, user_input: str, steps: List[str], required_tool: str) -> str:
+    def _create_and_execute_new_tool(self, user_input: str, steps: List[str], required_tool: str, tool_general_description: str) -> str:
         """Search for, create, and execute a new tool."""
         try:
             # Find best tool on GitHub
@@ -149,7 +150,8 @@ class AlitaManager:
                 language="python",
                 usage_guide=tool_info['usage'],
                 user_question=user_input,
-                search_keyword=required_tool
+                search_keyword=required_tool,
+                tool_general_description=tool_general_description
             )
             
             print("🔍 Validating code...")
@@ -158,7 +160,8 @@ class AlitaManager:
                 language="python",
                 user_question=user_input,
                 search_keyword=required_tool,
-                usage_guide=tool_info['usage']
+                usage_guide=tool_info['usage'],
+                tool_general_description=tool_general_description
             )
 
             if not code:
@@ -170,7 +173,8 @@ class AlitaManager:
                 user_question=user_input,
                 required_tool=required_tool,
                 code=code,
-                tool_name=tool_info['name']
+                tool_name=tool_info['name'],
+                tool_general_description=tool_general_description
             )
 
             # Save and vectorize tool

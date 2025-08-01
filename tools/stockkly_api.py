@@ -1,28 +1,53 @@
 """
-stockkly_api: Fetches real-time NVIDIA stock price data including current price and changes
+stockkly_api: Fetches current or historical stock price data for any ticker symbol
 Tool Name: stockkly_api
 """
 
 import requests
 import json
-def main():
-    print("获取英伟达(NVDA)股价信息")
+def fetch_stock_price(ticker, endpoint_type="current"):
+    base_url = "https://stockkly-api.herokuapp.com/api"
+    if endpoint_type == "current":
+        url = f"{base_url}/prices/{ticker}"
+    elif endpoint_type == "historical":
+        url = f"{base_url}/pricesHistorical/{ticker}"
+    else:
+        raise ValueError("Invalid endpoint type. Use 'current' or 'historical'")
     try:
-        response = requests.get("https://stockkly-api.onrender.com/api/prices/NVDA")
-        if response.status_code == 200:
-            data = response.json()
-            print(f"股票代码: {data.get('ticker', 'N/A')}")
-            print(f"当前价格: ${data.get('price', 'N/A')}")
-            print(f"涨跌额: ${data.get('change', 'N/A')}")
-            print(f"涨跌幅: {data.get('changePercent', 'N/A')}%")
-            print(f"最后更新时间: {data.get('lastUpdated', 'N/A')}")
-        else:
-            print(f"获取数据失败，状态码: {response.status_code}")
+        response = requests.get(url)
+        response.raise_for_status()
+        return response.json()
     except requests.exceptions.RequestException as e:
-        print(f"请求错误: {e}")
+        return {"error": f"Failed to fetch data: {str(e)}"}
     except json.JSONDecodeError:
-        print("数据解析错误")
-    except Exception as e:
-        print(f"发生错误: {e}")
+        return {"error": "Invalid JSON response"}
+def display_stock_data(data, ticker, data_type):
+    if "error" in data:
+        print(f"Error: {data['error']}")
+        return
+    print(f"\n--- Stock Data for {ticker.upper()} ---")
+    if data_type == "current":
+        if isinstance(data, dict):
+            for key, value in data.items():
+                print(f"{key}: {value}")
+        elif isinstance(data, list) and len(data) > 0:
+            for key, value in data[0].items():
+                print(f"{key}: {value}")
+    elif data_type == "historical":
+        if isinstance(data, list):
+            print(f"Historical data (last {len(data)} entries):")
+            for i, entry in enumerate(data[-10:]):
+                print(f"Entry {i+1}: {entry}")
+        else:
+            print(f"Historical data: {data}")
+def main():
+    ticker = input("Enter stock ticker symbol: ").strip().upper()
+    data_type = input("Enter data type (current/historical): ").strip().lower()
+    if data_type not in ["current", "historical"]:
+        print("Invalid data type. Using 'current' as default.")
+        data_type = "current"
+    print(f"Fetching {data_type} stock data for {ticker}...")
+    stock_data = fetch_stock_price(ticker, data_type)
+    display_stock_data(stock_data, ticker, data_type)
 if __name__ == "__main__":
     main()

@@ -55,11 +55,13 @@ def analyze_task(task: str) -> Dict[str, Union[list, str]]:
         Dict with:
             steps: List of steps to solve the task
             required_tool: Tool name or "no_extra_tools_needed"
+            tool_general_description: General description of what the tool should do (for generic tool creation)
     """
     prompt = f"""
-    Analyze the following task and return a JSON object with two fields:
+    Analyze the following task and return a JSON object with three fields:
     1. "steps": An array of strings describing the steps needed to solve the task
     2. "required_tool": A string containing either a single tool name that would be helpful for searching (e.g. "youtube transcript", "stock price free") or "no_extra_tools_needed" if no external tool is required
+    3. "tool_general_description": A general description of what the tool should do, focusing on universal functionality rather than the specific query. This should describe the tool's general purpose.
     
     The JSON must:
     - Use double quotes for all strings and property names
@@ -75,7 +77,8 @@ def analyze_task(task: str) -> Dict[str, Union[list, str]]:
             "Analyze subtitles to find when dinosaurs are first mentioned",
             "Identify the number mentioned immediately after"
         ],
-        "required_tool": "youtube transcript"
+        "required_tool": "youtube transcript",
+        "tool_general_description": "A tool that can extract and retrieve transcripts/subtitles from any YouTube video by URL or video ID"
     }}
     
     Example 2:
@@ -85,7 +88,8 @@ def analyze_task(task: str) -> Dict[str, Union[list, str]]:
             "Fetch current stock price data for NVIDIA (NVDA)",
             "Extract and return the latest price"
         ],
-        "required_tool": "stock price api free"
+        "required_tool": "stock price api free",
+        "tool_general_description": "A tool that fetches real-time stock price data for any given stock ticker symbol"
     }}
     
     Example 3:
@@ -95,7 +99,8 @@ def analyze_task(task: str) -> Dict[str, Union[list, str]]:
             "Access knowledge base for information about large language models",
             "Formulate comprehensive explanation"
         ],
-        "required_tool": "no_extra_tools_needed"
+        "required_tool": "no_extra_tools_needed",
+        "tool_general_description": "no_extra_tools_needed"
     }}
     
     Now analyze this task and return a properly formatted JSON object:

@@ -76,7 +76,7 @@ def clean_and_validate_commands(commands: List[str]) -> List[str]:
     
     return cleaned_commands
 
-def generate_code(language: str, usage_guide: str, user_question: str, search_keyword: str) -> str:
+def generate_code(language: str, usage_guide: str, user_question: str, search_keyword: str, tool_general_description: str) -> str:
     """
     Use LLM to generate code based on usage guide and requirements
     
@@ -85,32 +85,42 @@ def generate_code(language: str, usage_guide: str, user_question: str, search_ke
         usage_guide (str): Usage instructions from tool documentation
         user_question (str): Original user question
         search_keyword (str): Tool search keyword
+        tool_general_description (str): General description of what the tool should do
         
     Returns:
         str: Generated code
     """
     prompt = f"""
-    Write ONLY the implementation code in {language} to solve this problem using the {search_keyword}.
+    Write a GENERIC and REUSABLE implementation code in {language} based on the following tool description and usage guide.
     
-    IMPORTANT:
-    1. Return ONLY the code implementation
-    2. NO documentation, explanations, or markdown
-    3. NO installation instructions or usage examples
-    4. Get ALL required inputs from the user during runtime using input()
-    5. NO hardcoded values or TODO comments
+    Tool General Purpose: {tool_general_description}
+    
+    CRITICAL REQUIREMENTS:
+    1. Create a UNIVERSAL tool that can handle ANY input, not just the specific example
+    2. Make the tool REUSABLE for different scenarios
+    3. Get ALL required inputs from the user during runtime using input()
+    4. NO hardcoded values specific to the example question
+    5. Return ONLY the code implementation
+    6. NO documentation, explanations, or markdown
+    7. Make the tool flexible enough to handle various use cases
     
     Example format:
     import xyz
     
     def main():
-        value = input("Enter value: ")
-        # implementation
+        # Get generic inputs that work for any use case
+        param1 = input("Enter [generic parameter name]: ")
+        param2 = input("Enter [another generic parameter]: ")
+        # implementation that works for ANY input
     
     if __name__ == "__main__":
         main()
     
-    Problem: {user_question}
+    Original Example Question (DO NOT hardcode for this): {user_question}
+    Tool Type: {search_keyword}
     Usage Guide: {usage_guide}
+    
+    Remember: The code should work for ANY similar request, not just this specific example!
     """
     
     try:
@@ -122,7 +132,7 @@ def generate_code(language: str, usage_guide: str, user_question: str, search_ke
         print(f"Error generating code: {e}")
         return ""
 
-def clean_and_validate_code(code: str, language: str, user_question: str, search_keyword: str, usage_guide: str) -> str:
+def clean_and_validate_code(code: str, language: str, user_question: str, search_keyword: str, usage_guide: str, tool_general_description: str) -> str:
     """
     Clean and validate generated code to ensure it meets language standards and requirements.
     Uses LLM to check and fix code until it's correct.
@@ -133,6 +143,7 @@ def clean_and_validate_code(code: str, language: str, user_question: str, search
         user_question (str): Original user question
         search_keyword (str): Tool search keyword
         usage_guide (str): Usage instructions and examples
+        tool_general_description (str): General description of what the tool should do
         
     Returns:
         str: Cleaned and validated code

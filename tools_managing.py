@@ -24,7 +24,7 @@ def _load_model(desc: str = "Loading sentence-transformers model") -> SentenceTr
             pbar.update(100)  # Complete the progress bar
     return _model
 
-def generate_code_description(user_question: str, required_tool: str, code: str, tool_name: str) -> str:
+def generate_code_description(user_question: str, required_tool: str, code: str, tool_name: str, tool_general_description: str) -> str:
     """
     Generate a one-sentence description of the code's functionality using LLM.
     
@@ -33,26 +33,30 @@ def generate_code_description(user_question: str, required_tool: str, code: str,
         required_tool (str): The required tool identified by task analyzer
         code (str): The generated code
         tool_name (str): Name of the tool
+        tool_general_description (str): General description of what the tool should do
         
     Returns:
         str: A description in format "sanitized_tool_name: one-sentence description"
     """
     prompt = f"""
-    Given a tool's code and context, generate a SINGLE SENTENCE description (max 100 characters) that captures its core functionality.
-    The description should be clear, concise, and focus on what the tool does.
+    Given a tool's code and its general purpose, generate a SINGLE SENTENCE description (max 100 characters) that captures its UNIVERSAL functionality.
+    The description should be generic and describe what the tool can do for ANY input, not just the specific example.
     
     Context:
-    - User Question: {user_question}
-    - Required Tool: {required_tool}
+    - Tool General Purpose: {tool_general_description}
+    - Tool Type: {required_tool}
+    - Original Example Question (DO NOT make description specific to this): {user_question}
     - Code: {code}
     
     Format your response EXACTLY as:
-    {sanitize_tool_name(tool_name)}: [your one-sentence description]
+    {sanitize_tool_name(tool_name)}: [your generic one-sentence description]
     
     Example formats:
     youtube_search: Searches YouTube videos using specified keywords and filters
     stock_price_checker: Fetches real-time stock prices from financial APIs
     weather_api: Retrieves current weather conditions for a given location
+    
+    Remember: Make the description GENERIC and REUSABLE, not specific to the example question!
     """
     
     description = get_model_response(prompt)
