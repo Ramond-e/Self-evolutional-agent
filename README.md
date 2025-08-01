@@ -95,9 +95,19 @@ OPENAI_API_KEY=your_openai_api_key_here
 pip install -r requirements.txt
 ```
 
-> **Note**: If `requirements.txt` doesn't exist, install the basic dependencies:
+> **💡 Tip**: Use a virtual environment to avoid conflicts:
 ```bash
-pip install requests python-dotenv numpy scikit-learn openai
+# Create virtual environment
+python -m venv alita-env
+
+# Activate (Windows)
+alita-env\Scripts\activate
+
+# Activate (macOS/Linux)
+source alita-env/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
 ```
 
 ## 🎮 Usage

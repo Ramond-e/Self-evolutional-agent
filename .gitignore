@@ -131,3 +131,18 @@ cython_debug/
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# Machine Learning models (optional - uncomment if models get too large)
+# *.pkl
+# *.joblib
+# *.h5
+# *.pt
+# *.pth
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+temp/
+tmp/
