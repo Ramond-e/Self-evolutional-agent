@@ -81,12 +81,29 @@ class AlitaManager:
     def _execute_existing_tool(self, tool_name: str, user_input: str) -> str:
         """Execute an existing tool."""
         try:
-            print(f"🎯 Executing tool: {tool_name}")
-            # Execute the tool
-            success, _ = execute_python_code(f"{tool_name}.py")
+            # Get the actual tool information
+            tools = list_available_tools()
+            matching_tool = None
+            
+            # Find the tool that matches the sanitized name
+            for tool in tools:
+                # Check if the tool_name matches the sanitized version of this tool's name
+                from tools_managing import sanitize_tool_name
+                if tool_name == sanitize_tool_name(tool['name']):
+                    matching_tool = tool
+                    break
+            
+            if not matching_tool:
+                return f"❌ Tool '{tool_name}' not found in available tools"
+            
+            print(f"🎯 Executing tool: {matching_tool['name']}")
+            print(f"📝 Description: {matching_tool['description']}")
+            
+            # Execute the tool using the actual filename
+            success, output = execute_python_code(matching_tool['filename'])
             
             if not success:
-                return "❌ Failed to execute tool"
+                return f"❌ Failed to execute tool: {output}"
                 
             # Tool output has been printed directly to console
             return "✅ Tool execution completed successfully!"

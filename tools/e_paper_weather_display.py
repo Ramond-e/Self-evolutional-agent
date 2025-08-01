@@ -1,34 +1,39 @@
 """
-weather_api: Retrieves current weather conditions for Shanghai including temperature and humidity
+weather_api: Retrieves current weather conditions for a given city using OpenWeatherMap API
 Tool Name: e_paper_weather_display
 """
 
 import requests
-def main():
-    api_key = input("Enter your OpenWeatherMap API key: ")
-    city = "Shanghai"
-    units = "metric"
-    url = f"http://api.openweathermap.org/data/2.5/weather?q={city}&appid={api_key}&units={units}&lang=zh"
-    try:
-        response = requests.get(url)
-        response.raise_for_status()
-        data = response.json()
+import json
+def get_weather(city, api_key):
+    base_url = "http://api.openweathermap.org/data/2.5/weather"
+    params = {
+        'q': city,
+        'appid': api_key,
+        'units': 'metric',
+        'lang': 'zh_cn'
+    }
+    response = requests.get(base_url, params=params)
+    data = response.json()
+    if response.status_code == 200:
+        weather_desc = data['weather'][0]['description']
         temp = data['main']['temp']
         feels_like = data['main']['feels_like']
         humidity = data['main']['humidity']
-        description = data['weather'][0]['description']
+        pressure = data['main']['pressure']
         wind_speed = data['wind']['speed']
-        print("上海今天的天气:")
-        print(f"温度: {temp}°C")
+        print(f"城市: {city}")
+        print(f"天气状况: {weather_desc}")
+        print(f"当前温度: {temp}°C")
         print(f"体感温度: {feels_like}°C")
         print(f"湿度: {humidity}%")
-        print(f"天气描述: {description}")
+        print(f"气压: {pressure} hPa")
         print(f"风速: {wind_speed} m/s")
-    except requests.exceptions.RequestException as e:
-        print(f"获取天气数据时出错: {e}")
-    except KeyError as e:
-        print(f"解析天气数据时出错: {e}")
-    except Exception as e:
-        print(f"发生未知错误: {e}")
+    else:
+        print(f"获取天气信息失败: {data.get('message', '未知错误')}")
+def main():
+    api_key = input("请输入您的OpenWeatherMap API密钥: ")
+    city = input("请输入城市名称 (例如: Shanghai): ")
+    get_weather(city, api_key)
 if __name__ == "__main__":
     main()

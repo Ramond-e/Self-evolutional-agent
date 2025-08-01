@@ -133,7 +133,7 @@ def vectorize_description(description: str, tool_name: str) -> None:
     filename = f'vectorized_tools/{safe_name}.npy'
     np.save(filename, embedding)
 
-def search_similar_tool(required_tool: str, similarity_threshold: float = 0.8) -> Optional[str]:
+def search_similar_tool(required_tool: str, similarity_threshold: float = 0.7) -> Optional[str]:
     """
     Search for similar existing tools by comparing the required tool type with tool descriptions.
     
