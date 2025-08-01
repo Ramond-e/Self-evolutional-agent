@@ -87,7 +87,7 @@ OPENROUTER_API_BASE_URL=https://openrouter.ai/api/v1/chat/completions
 GITHUB_API_TOKEN=your_github_api_token_here
 ```
 
-> **⚠️ Security Note**: Never commit your actual API keys to version control. The `.env` file is already included in `.gitignore` to prevent accidental commits.
+> **⚠️ Security Note**: Never commit your actual API keys to version control. 
 
 ### 4. Install Dependencies
 ```bash
@@ -232,7 +232,6 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 - **OpenRouter** for providing access to advanced language models
 - **GitHub** for hosting and API access
 - **Anthropic** for Claude models
-- **OpenAI** for GPT models
 - The open-source community for tools and inspiration
 
 ## 📞 Support
