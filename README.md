@@ -1,4 +1,4 @@
-# 🤖 Alita - Self-Evolutional AI Agent
+# 🤖  Self-Evolutional AI Agent
 
 [![Python](https://img.shields.io/badge/Python-3.7+-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
@@ -8,7 +8,7 @@
 
 ## 🚀 Overview
 
-Alita is an intelligent AI agent that combines task analysis, tool management, and code generation to provide dynamic solutions to user queries. It can:
+This is an intelligent AI agent that combines task analysis, tool management, and code generation to provide dynamic solutions to user queries. It can:
 
 - 🧠 **Analyze complex tasks** and break them down into actionable steps
 - 🔍 **Search GitHub** for relevant tools and libraries
@@ -242,7 +242,6 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 
 <div align="center">
 
-**Made with ❤️ by the Alita Team**
 
 ⭐ **Star this repo if you find it useful!** ⭐
 
