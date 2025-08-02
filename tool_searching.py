@@ -17,26 +17,43 @@ if not GITHUB_API_TOKEN:
 
 GITHUB_API_BASE_URL = "https://api.github.com"
 
-def build_github_search_url(query: str) -> str:
+def build_github_search_url(query: str, search_type: str = "repositories", search_strategy: int = 1) -> str:
     """
     Builds a GitHub API search URL based on task requirements.
     
     Args:
         query (str): Search query based on task requirements
+        search_type (str): Type of search (repositories or code)
+        search_strategy (int): Which search strategy to use (1-4)
         
     Returns:
         str: GitHub API search URL
     """
+    # Different search strategies - all generic, no hardcoding
+    if search_strategy == 1:
+        # Strategy 1: Simple direct search
+        search_query = f"{query} language:python"
+    elif search_strategy == 2:
+        # Strategy 2: Focus on API/integration tools
+        search_query = f"{query} (API OR sdk OR client OR wrapper OR library) language:python"
+    elif search_strategy == 3:
+        # Strategy 3: Search popular projects with good documentation
+        search_query = f"{query} language:python stars:>100 good-first-issues:>0"
+    else:
+        # Strategy 4: Search for official or well-maintained tools
+        # Use multiple quality indicators without hardcoding names
+        search_query = f'{query} language:python (official OR certified OR "well maintained" OR popular) stars:>200'
+    
     # Base search parameters
     params = {
-        'q': f"{query} language:python",  # Only search Python repositories
-        'sort': 'stars',  # Sort by stars to get most popular repos
+        'q': search_query,
+        'sort': 'stars',
         'order': 'desc',
-        'per_page': 3     # Get top 3 results
+        'per_page': 15  # Get more results for better selection
     }
     
     # Build the search URL
-    search_url = f"{GITHUB_API_BASE_URL}/search/repositories?{urlencode(params)}"
+    search_url = f"{GITHUB_API_BASE_URL}/search/{search_type}?{urlencode(params)}"
     return search_url
 
 def clean_html_content(content: str) -> str:
@@ -226,51 +243,121 @@ def score_tool(repo: Dict, docs: Dict, question: str, steps: List[str], search_k
         search_keyword: Tool search keyword
         
     Returns:
-        float: Score from 0-100
+        tuple: (score, language)
     """
     # Get language
     language = repo.get('language', '') if repo else ''
     language = language.lower() if language else ''
     
-    # Base scores
-    max_stars = 10000
-    star_score = min(25, (repo['stargazers_count'] / max_stars) * 25)  # Star score (0-25 points)
+    # Only accept Python tools
+    if language != 'python':
+        return 0, language
     
-    # Documentation score (0-25 points)
+    # Base scores - Adjusted to give more weight to popular repos
+    max_stars = 5000  # Lowered threshold for better scoring
+    star_score = min(20, (repo['stargazers_count'] / max_stars) * 20)  # Star score (0-20 points)
+    
+    # Documentation score (0-20 points)
     doc_score = 0
     if docs['installation'] != "Installation instructions not found":
-        doc_score += 12.5
+        doc_score += 10
     if docs['usage'] != "Usage instructions not found":
-        doc_score += 12.5
+        doc_score += 10
     
-    # Relevance score (0-30 points)
+    # Quality indicators bonus (0-20 points)
+    quality_bonus = 0
+    name_desc = (repo['name'] + ' ' + (repo['description'] or '')).lower()
+    docs_text = (docs['installation'] + ' ' + docs['usage']).lower()
+    
+    # Check for API/SDK indicators (suggests it's a proper API wrapper)
+    api_indicators = [
+        'api', 'sdk', 'client', 'wrapper', 'official', 
+        'endpoint', 'request', 'response', 'restful', 'rest api', 'library'
+    ]
+    api_indicator_count = sum(1 for indicator in api_indicators if indicator in name_desc or indicator in docs_text)
+    quality_bonus += min(8, api_indicator_count * 2)
+    
+    # Check for proper package structure indicators
+    package_indicators = [
+        'pip install', 'python -m pip', 'setup.py', 'pypi', 
+        'requirements', 'import', 'from', 'package'
+    ]
+    package_count = sum(1 for indicator in package_indicators if indicator in docs_text)
+    quality_bonus += min(3, package_count)
+    
+    # Check for authentication mentions (indicates proper API integration)
+    auth_patterns = [
+        'api_key', 'api key', 'apikey', 'api-key', 'token', 
+        'authentication', 'auth', 'credentials', 'secret', 'bearer'
+    ]
+    if any(pattern in docs_text for pattern in auth_patterns):
+        quality_bonus += 3
+    
+    # Check for data quality indicators
+    data_quality_patterns = [
+        'real-time', 'realtime', 'live', 'current', 'latest',
+        'accurate', 'reliable', 'official', 'verified', 'up-to-date'
+    ]
+    if any(pattern in docs_text for pattern in data_quality_patterns):
+        quality_bonus += 3
+    
+    # Check for good documentation practices
+    doc_quality_indicators = [
+        'example', 'usage', 'quick start', 'getting started',
+        'response format', 'parameters', 'tutorial', 'guide'
+    ]
+    doc_indicator_count = sum(1 for indicator in doc_quality_indicators if indicator in docs_text)
+    quality_bonus += min(3, doc_indicator_count)
+    
+    quality_bonus = min(20, quality_bonus)
+    
+    # Relevance score (0-20 points)
     relevance_score = 0
     
-    # Check name and description match
-    name_desc = (repo['name'] + ' ' + (repo['description'] or '')).lower()
-    for term in search_keyword.lower().split():
-        if term in name_desc:
-            relevance_score += 7.5
+    # Enhanced keyword matching
+    keywords = search_keyword.lower().split()
     
-    # Check if documentation covers solution steps
-    docs_text = (docs['installation'] + ' ' + docs['usage']).lower()
+    # Check repo name and description
+    for keyword in keywords:
+        if keyword in name_desc:
+            relevance_score += 5
+    
+    # Check documentation content
     for step in steps:
-        step_terms = step.lower().split()
-        matches = sum(1 for term in step_terms if term in docs_text)
-        if matches / len(step_terms) > 0.5:  # If more than 50% of terms match
-            relevance_score += 7.5
+        if any(keyword in step.lower() for keyword in keywords):
+            relevance_score += 3
     
-    # Cap relevance score at 30
-    relevance_score = min(30, relevance_score)
+    relevance_score = min(20, relevance_score)
     
-    # Language score (0-30 points)
-    # Only accept Python tools
-    if language == 'python':
-        language_score = 30
-    else:
-        return 0, language  # Immediately return 0 score for non-Python tools
+    # Freshness score (0-20 points) - recently updated repos are better
+    freshness_score = 0
+    if repo.get('updated_at'):
+        from datetime import datetime
+        try:
+            updated = datetime.strptime(repo['updated_at'], '%Y-%m-%dT%H:%M:%SZ')
+            days_old = (datetime.now() - updated).days
+            if days_old < 30:
+                freshness_score = 20
+            elif days_old < 90:
+                freshness_score = 15
+            elif days_old < 180:
+                freshness_score = 10
+            elif days_old < 365:
+                freshness_score = 5
+        except:
+            pass
     
-    total_score = star_score + doc_score + relevance_score + language_score
+    total_score = star_score + doc_score + quality_bonus + relevance_score + freshness_score
+    
+    # Debug logging
+    repo_name = repo.get('full_name', repo.get('name', 'Unknown'))
+    print(f"\nScoring {repo_name}:")
+    print(f"  Stars: {star_score:.1f}/20")
+    print(f"  Docs: {doc_score}/20")
+    print(f"  Quality: {quality_bonus}/20")
+    print(f"  Relevance: {relevance_score}/20")
+    print(f"  Freshness: {freshness_score}/20")
+    print(f"  Total: {total_score:.1f}/100")
     
     return total_score, language
 
@@ -286,64 +373,264 @@ def find_best_tool(question: str, steps: List[str], search_keyword: str) -> Dict
     Returns:
         Dict: Best tool's details including name, description, installation and usage
     """
-    headers = {
-        'Authorization': f'token {GITHUB_API_TOKEN}',
-        'Accept': 'application/vnd.github.v3+json'
-    }
+    # Use the new function to get multiple tools and return the best one
+    tools = find_best_tools_with_exclusion(question, steps, search_keyword, excluded_tools=set(), max_tools=1)
     
-    search_url = build_github_search_url(search_keyword)
-    
-    try:
-        # Get top 3 repositories
-        response = requests.get(search_url, headers=headers)
-        response.raise_for_status()
-        repos = response.json().get('items', [])[:3]
-        
-        if not repos:
-            return {
-                "name": "No suitable tool found",
-                "description": "Could not find a tool matching the requirements",
-                "stars": 0,
-                "url": "",
-                "score": 0,
-                "installation": "",
-                "usage": ""
-            }
-        
-        # Score each repository
-        best_score = -1
-        best_tool = None
-        
-        for repo in repos:
-            # Get documentation
-            docs = fetch_repository_readme(repo['url'])
-            
-            # Score the tool
-            score, language = score_tool(repo, docs, question, steps, search_keyword)
-            
-            if score > best_score:
-                best_score = score
-                best_tool = {
-                    "name": repo['name'],
-                    "description": repo['description'] or "No description available",
-                    "language": language or "Unknown",
-                    "stars": repo['stargazers_count'],
-                    "url": repo['html_url'],
-                    "score": score,
-                    "installation": docs['installation'],
-                    "usage": docs['usage']
-                }
-        
-        return best_tool
-        
-    except requests.exceptions.RequestException as e:
+    if tools:
+        return tools[0]
+    else:
         return {
-            "name": "Error occurred",
-            "description": f"Failed to search GitHub: {str(e)}",
-            "language": "Unknown",
+            "name": "No suitable tool found",
+            "description": "Could not find a tool matching the requirements",
             "stars": 0,
             "url": "",
             "score": 0,
             "installation": "",
             "usage": ""
         }
+
+def find_best_tool_original(question: str, steps: List[str], search_keyword: str) -> Dict:
+    """
+    Original implementation of find_best_tool kept for reference.
+    """
+    headers = {
+        'Authorization': f'token {GITHUB_API_TOKEN}',
+        'Accept': 'application/vnd.github.v3+json'
+    }
+    
+    print(f"\n🔍 Searching GitHub for: {search_keyword}")
+    
+    # Try multiple search strategies
+    search_strategies = [
+        # Strategy 1: Simple direct search
+        build_github_search_url(search_keyword, search_strategy=1),
+        # Strategy 2: Add API/SDK terms
+        build_github_search_url(search_keyword, search_strategy=2),
+        # Strategy 3: Search in description and readme
+        build_github_search_url(search_keyword, search_strategy=3),
+        # Strategy 4: Search for well-known API names
+        build_github_search_url(search_keyword, search_strategy=4)
+    ]
+    
+    all_repos = []
+    seen_repos = set()
+    
+    for strategy_idx, search_url in enumerate(search_strategies):
+        try:
+            print(f"\n📡 Search strategy {strategy_idx + 1}...")
+            response = requests.get(search_url, headers=headers)
+            
+            if response.status_code == 403 and 'X-RateLimit-Remaining' in response.headers:
+                if response.headers['X-RateLimit-Remaining'] == '0':
+                    print("⚠️ GitHub API rate limit reached. Using cached results.")
+                    break
+            
+            if response.status_code != 200:
+                print(f"⚠️ Strategy {strategy_idx + 1} returned status: {response.status_code}")
+                continue
+                
+            data = response.json()
+            repos = data.get('items', [])
+            print(f"   Found {len(repos)} repositories")
+            
+            # Add unique repos
+            for repo in repos:
+                repo_id = repo.get('id')
+                if repo_id and repo_id not in seen_repos:
+                    seen_repos.add(repo_id)
+                    all_repos.append(repo)
+                    print(f"   Added: {repo['full_name']} ⭐ {repo['stargazers_count']}")
+            
+            print(f"   Total unique repos so far: {len(all_repos)}")
+            
+            # Stop if we have enough repos
+            if len(all_repos) >= 10:
+                break
+                
+        except requests.exceptions.RequestException as e:
+            print(f"⚠️ Search strategy {strategy_idx + 1} failed: {str(e)}")
+            continue
+    
+    if not all_repos:
+        return {
+            "name": "No suitable tool found",
+            "description": "Could not find a tool matching the requirements",
+            "stars": 0,
+            "url": "",
+            "score": 0,
+            "installation": "",
+            "usage": ""
+        }
+    
+    print(f"\n📊 Evaluating {len(all_repos)} repositories...")
+    
+    # Score each repository
+    best_score = -1
+    best_tool = None
+    evaluated = 0
+    
+    for repo in all_repos[:15]:  # Evaluate top 15 repos
+        # Skip if repo has very few stars (likely not reliable)
+        if repo['stargazers_count'] < 5:  # Lowered from 10 to 5
+            continue
+            
+        evaluated += 1
+        print(f"\n🔍 Evaluating: {repo['full_name']} ⭐ {repo['stargazers_count']}")
+        
+        # Get documentation
+        docs = fetch_repository_readme(repo['url'])
+        
+        # Score the tool
+        score, language = score_tool(repo, docs, question, steps, search_keyword)
+        
+        if score > best_score:
+            best_score = score
+            best_tool = {
+                "name": repo['name'],
+                "description": repo['description'] or "No description available",
+                "language": language or "Unknown",
+                "stars": repo['stargazers_count'],
+                "url": repo['html_url'],
+                "score": score,
+                "installation": docs['installation'],
+                "usage": docs['usage']
+            }
+    
+    print(f"\n✅ Best tool selected: {best_tool['name'] if best_tool else 'None'} (score: {best_score:.1f})")
+    
+    return best_tool if best_tool else {
+        "name": "No suitable tool found",
+        "description": "Could not find a tool matching the requirements",
+        "stars": 0,
+        "url": "",
+        "score": 0,
+        "installation": "",
+        "usage": ""
+    }
+
+def find_best_tools_with_exclusion(question: str, steps: List[str], search_keyword: str, excluded_tools: set = None, max_tools: int = 3) -> List[Dict]:
+    """
+    Find multiple tools on GitHub for a given task, with support for excluding already tried tools.
+    
+    Args:
+        question (str): Original user question
+        steps (List[str]): Steps needed to solve the task
+        search_keyword (str): Keyword for tool search
+        excluded_tools (set): Set of tool names to exclude from results
+        max_tools (int): Maximum number of tools to return
+        
+    Returns:
+        List[Dict]: List of tools with details including name, description, installation and usage
+    """
+    if excluded_tools is None:
+        excluded_tools = set()
+    
+    headers = {
+        'Authorization': f'token {GITHUB_API_TOKEN}',
+        'Accept': 'application/vnd.github.v3+json'
+    }
+    
+    print(f"\n🔍 Searching GitHub for: {search_keyword}")
+    if excluded_tools:
+        print(f"   Excluding: {', '.join(excluded_tools)}")
+    
+    # Try multiple search strategies
+    search_strategies = [
+        # Strategy 1: Simple direct search
+        build_github_search_url(search_keyword, search_strategy=1),
+        # Strategy 2: Add API/SDK terms
+        build_github_search_url(search_keyword, search_strategy=2),
+        # Strategy 3: Search in description and readme
+        build_github_search_url(search_keyword, search_strategy=3),
+        # Strategy 4: Search for well-known API names
+        build_github_search_url(search_keyword, search_strategy=4)
+    ]
+    
+    all_repos = []
+    seen_repos = set()
+    
+    for strategy_idx, search_url in enumerate(search_strategies):
+        try:
+            print(f"\n📡 Search strategy {strategy_idx + 1}...")
+            response = requests.get(search_url, headers=headers)
+            
+            if response.status_code == 403 and 'X-RateLimit-Remaining' in response.headers:
+                if response.headers['X-RateLimit-Remaining'] == '0':
+                    print("⚠️ GitHub API rate limit reached. Using cached results.")
+                    break
+            
+            if response.status_code != 200:
+                print(f"⚠️ Strategy {strategy_idx + 1} returned status: {response.status_code}")
+                continue
+                
+            data = response.json()
+            repos = data.get('items', [])
+            print(f"   Found {len(repos)} repositories")
+            
+            # Add unique repos that aren't excluded
+            for repo in repos:
+                repo_id = repo.get('id')
+                repo_name = repo.get('name', '')
+                
+                # Skip if excluded
+                if repo_name in excluded_tools:
+                    continue
+                    
+                if repo_id and repo_id not in seen_repos:
+                    seen_repos.add(repo_id)
+                    all_repos.append(repo)
+                    print(f"   Added: {repo['full_name']} ⭐ {repo['stargazers_count']}")
+            
+            print(f"   Total unique repos so far: {len(all_repos)}")
+            
+            # Stop if we have enough repos
+            if len(all_repos) >= max_tools * 3:  # Get 3x to have options after scoring
+                break
+                
+        except requests.exceptions.RequestException as e:
+            print(f"⚠️ Search strategy {strategy_idx + 1} failed: {str(e)}")
+            continue
+    
+    if not all_repos:
+        return []
+    
+    print(f"\n📊 Evaluating {len(all_repos)} repositories...")
+    
+    # Score and rank all repositories
+    scored_tools = []
+    evaluated = 0
+    
+    for repo in all_repos[:20]:  # Evaluate top 20 repos
+        # Skip if repo has very few stars (likely not reliable)
+        if repo['stargazers_count'] < 5:
+            continue
+            
+        evaluated += 1
+        print(f"\n🔍 Evaluating: {repo['full_name']} ⭐ {repo['stargazers_count']}")
+        
+        # Get documentation
+        docs = fetch_repository_readme(repo['url'])
+        
+        # Score the tool
+        score, language = score_tool(repo, docs, question, steps, search_keyword)
+        
+        if score > 0:  # Only include tools with positive scores
+            tool_info = {
+                "name": repo['name'],
+                "description": repo['description'] or "No description available",
+                "language": language or "Unknown",
+                "stars": repo['stargazers_count'],
+                "url": repo['html_url'],
+                "score": score,
+                "installation": docs['installation'],
+                "usage": docs['usage']
+            }
+            scored_tools.append(tool_info)
+    
+    # Sort by score and return top N
+    scored_tools.sort(key=lambda x: x['score'], reverse=True)
+    top_tools = scored_tools[:max_tools]
+    
+    print(f"\n✅ Found {len(top_tools)} suitable tools")
+    
+    return top_tools

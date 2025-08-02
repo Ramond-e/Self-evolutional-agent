@@ -91,7 +91,7 @@ def generate_code(language: str, usage_guide: str, user_question: str, search_ke
         str: Generated code
     """
     prompt = f"""
-    Write a GENERIC and REUSABLE implementation code in {language} based on the following tool description and usage guide.
+    Write a GENERIC and REUSABLE implementation code in {language} based on the following tool documentation.
     
     Tool General Purpose: {tool_general_description}
     
@@ -105,38 +105,78 @@ def generate_code(language: str, usage_guide: str, user_question: str, search_ke
     7. Make the tool flexible enough to handle various use cases
     8. IMPORTANT: The tool should both PRINT results AND RETURN them as a dictionary or structured format
     
-    Example format:
-    import xyz
+    IMPLEMENTATION GUIDELINES:
+    - Study the Usage Guide carefully to understand the API/library structure
+    - If API keys are mentioned, prompt user for them at runtime
+    - Handle errors gracefully with try-except blocks
+    - For API responses, extract ALL relevant data fields
+    - CRITICAL: Save ALL results to 'tool_output.json' for cross-step data sharing
+    - The saved JSON must contain all the data that was displayed to the user
+    - Include fields like: location, temperature, weather conditions, timestamps, etc.
     
-    def get_data():
-        # Get generic inputs that work for any use case
-        param1 = input("Enter [generic parameter name]: ")
-        param2 = input("Enter [another generic parameter]: ")
+    PREFERRED STRUCTURE:
+    ```python
+    import required_libraries
+    import json
+    
+    def fetch_data():
+        # Get user inputs
+        param1 = input("Enter [descriptive parameter name]: ")
         
-        # implementation that works for ANY input
-        result = {{"key": "value", "data": "..."}}
+        # If API key is needed
+        api_key = input("Enter your API key (get free at [provider_url]): ")
         
-        # Print for user visibility
-        print("Result:", result)
-        
-        # Return for programmatic access
-        return result
+        try:
+            # Main implementation using the library/API
+            # Extract and process data
+            
+            # CRITICAL: Build a complete result dictionary with ALL data
+            result = {{
+                "relevant_field1": value1,
+                "relevant_field2": value2,
+                # Include ALL important data fields from the API response
+            }}
+            
+            # Display results for user visibility
+            print("\\n--- Results ---")
+            # Print all relevant fields
+            for key, value in result.items():
+                print(f"{{key}}: {{value}}")
+            
+            # CRITICAL: Save ALL data for other tools to use
+            with open('tool_output.json', 'w', encoding='utf-8') as f:
+                json.dump(result, f, ensure_ascii=False, indent=2)
+            
+            # Also print confirmation
+            print("\\nData saved to tool_output.json")
+            
+            return result
+            
+        except Exception as e:
+            print(f"Error: {{str(e)}}")
+            # Even on error, save what we have
+            error_result = {{"error": str(e), "status": "failed"}}
+            with open('tool_output.json', 'w', encoding='utf-8') as f:
+                json.dump(error_result, f, ensure_ascii=False, indent=2)
+            return error_result
     
     def main():
-        result = get_data()
-        # Save result for other tools to access
-        import json
-        with open('tool_output.json', 'w') as f:
-            json.dump(result, f)
+        fetch_data()
     
     if __name__ == "__main__":
         main()
+    ```
     
     Original Example Question (DO NOT hardcode for this): {user_question}
     Tool Type: {search_keyword}
-    Usage Guide: {usage_guide}
     
-    Remember: The code should work for ANY similar request, not just this specific example!
+    USAGE GUIDE FROM DOCUMENTATION:
+    {usage_guide}
+    
+    Remember: 
+    - Make the tool work for ANY similar request
+    - If the documentation mentions specific API providers (like Alpha Vantage, OpenWeatherMap), use them
+    - Include helpful prompts that guide users (e.g., where to get API keys)
     """
     
     try:

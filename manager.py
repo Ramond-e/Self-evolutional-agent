@@ -50,11 +50,18 @@ class AlitaManager:
             # Analyze the task
             print("🧠 Analyzing your request...")
             analysis = analyze_task(user_input)
+            needs_external_tool = analysis.get('needs_external_tool', False)
             steps = analysis['steps']
             main_required_tool = analysis.get('main_required_tool', 'no_extra_tools_needed')
             tool_general_description = analysis.get('tool_general_description', '')
 
-            # Display task breakdown
+            # If no external tools needed, provide direct response
+            if not needs_external_tool:
+                print("💬 Generating response...")
+                response = self._generate_direct_response(user_input)
+                return response
+
+            # Display task breakdown only if tools are needed
             print("\n📋 Task Breakdown:")
             print("=" * 50)
             for i, step in enumerate(steps, 1):
@@ -137,8 +144,15 @@ class AlitaManager:
     def _generate_direct_response(self, question: str) -> str:
         """Generate direct response using LLM when no tool is needed."""
         prompt = f"""
-        Provide a clear and concise answer to this question:
+        Provide a clear, helpful, and conversational answer to this question IN CHINESE:
         {question}
+        
+        Instructions:
+        - Be friendly and natural
+        - Provide accurate and helpful information
+        - Use Chinese for the response
+        - Do not mention that you're not using tools or external resources
+        - Just answer the question directly
         """
         return get_model_response(prompt)
 
@@ -254,6 +268,17 @@ print("===OUTPUT_END===")
 
     def _generate_final_answer(self, user_input: str, steps: List[dict], results: List[str], step_outputs: List[str] = None) -> str:
         """Generate final answer based on all step results."""
+        # Try to read the tool output file for the most recent data
+        tool_output_data = None
+        output_file = 'tool_output.json'
+        if os.path.exists(output_file):
+            try:
+                import json
+                with open(output_file, 'r', encoding='utf-8') as f:
+                    tool_output_data = json.load(f)
+            except Exception as e:
+                print(f"Warning: Could not read tool output file: {e}")
+        
         prompt = f"""
         Based on the following task execution results, provide a clear and concise answer to the user's question.
         
@@ -272,48 +297,120 @@ print("===OUTPUT_END===")
             
             prompt += "\n"
         
+        # Add the actual tool output data if available
+        if tool_output_data:
+            prompt += f"\nACTUAL TOOL OUTPUT DATA:\n{json.dumps(tool_output_data, ensure_ascii=False, indent=2)}\n"
+        
         prompt += """
         Please provide a comprehensive answer IN CHINESE that:
         1. Directly addresses the user's question
-        2. Extracts and uses any specific data from "Output data:" in the results if available
+        2. Uses the specific data from the execution results
         3. Is clear, natural, and conversational
         4. Includes all relevant details from the tool execution
         
-        IMPORTANT: 
-        - Look for "Output data:" in the results above - it may contain JSON data
-        - If there was an error during tool execution, explain what happened
-        - Focus ONLY on what the user asked about, not other topics
-        - Use the actual data in your response if available
-        - If data retrieval failed, explain why and provide alternatives
+        CRITICAL INSTRUCTIONS FOR DATA EXTRACTION:
+        - Look for "Output data:" in the Step Results above
+        - ALSO look for "ACTUAL TOOL OUTPUT DATA:" section which contains the real data
+        - This contains JSON data with actual values (temperature, weather, stock prices, etc.)
+        - USE THESE EXACT VALUES in your response - they are the real data!
+        
+        For stock price queries:
+        - Mention the current price, high, low, previous close
+        - Calculate and mention the price change (current - previous close)
+        - Include market cap, P/E ratio if available
+        - Mention the data retrieval time
+        - Example: "英伟达(NVDA)今天的股价是$170.92，最高$177.26，最低$170.89..."
+        
+        For weather queries:
+        - Temperature, weather condition, humidity, wind speed should all be mentioned
+        - Use natural language like "今天北京天气晴朗，温度34.09°C..."
+        
+        IMPORTANT: The data HAS been successfully retrieved if you see "ACTUAL TOOL OUTPUT DATA" section.
+        DO NOT say data is unavailable if it appears in the output above!
         """
         
         return get_model_response(prompt)
 
     def _create_and_execute_new_tool(self, user_input: str, steps: List[dict], required_tool: str, tool_general_description: str) -> str:
-        """Search for, create, and execute a new tool."""
+        """Search for, create, and execute a new tool with rating system."""
         try:
-            # Find best tool on GitHub
-            print("   🔎 Searching GitHub for suitable tools...")
-            # Convert steps to string list for find_best_tool
-            step_descriptions = [step['description'] for step in steps] if isinstance(steps[0], dict) else steps
-            tool_info = find_best_tool(user_input, step_descriptions, required_tool)
-            if tool_info['score'] == 0:
-                return "❌ Could not find a suitable tool for this task."
-
-            # Generate installation commands
-            install_cmds = generate_install_commands(tool_info['installation'])
-            install_cmds = clean_and_validate_commands(install_cmds)
-
-            # Ask user for installation approval
-            print(f"\n   🎉 Found tool: {tool_info['name']}")
-            print(f"   📝 Description: {tool_info['description']}")
-            print("\n   📦 Installation commands:")
-            for cmd in install_cmds:
-                print(f"      🔧 {cmd}")
-            approval = input("\n   ❓ Proceed with installation? (y/n): ")
+            # Track tried tools to avoid repetition
+            tried_tools = set()
+            max_search_attempts = 3
+            current_attempt = 0
             
-            if approval.lower() != 'y':
-                return "Tool installation cancelled."
+            while current_attempt < max_search_attempts:
+                # Find best tools on GitHub (with exclusion of tried tools)
+                print(f"\n   🔎 Searching GitHub for suitable tools (Attempt {current_attempt + 1}/{max_search_attempts})...")
+                
+                # Convert steps to string list for find_best_tool
+                step_descriptions = [step['description'] for step in steps] if isinstance(steps[0], dict) else steps
+                
+                # Get multiple tool options
+                tool_options = self._find_multiple_tools(
+                    user_input, step_descriptions, required_tool, tried_tools
+                )
+                
+                if not tool_options:
+                    return "❌ Could not find any suitable tools for this task."
+                
+                # Display tool options to user
+                print(f"\n   🎯 Found {len(tool_options)} potential tools:")
+                print("   " + "=" * 60)
+                for i, tool in enumerate(tool_options, 1):
+                    print(f"\n   📦 Option {i}: {tool['name']}")
+                    print(f"   ⭐ Stars: {tool['stars']} | Score: {tool['score']:.1f}/100")
+                    print(f"   📝 Description: {tool['description'][:100]}...")
+                    print(f"   🔗 URL: {tool['url']}")
+                print("   " + "=" * 60)
+                
+                # Let user choose
+                while True:
+                    choice = input(f"\n   ❓ Select a tool (1-{len(tool_options)}), 's' to search again, or 'c' to cancel: ")
+                    
+                    if choice.lower() == 'c':
+                        return "Tool installation cancelled."
+                    
+                    if choice.lower() == 's':
+                        # Add all shown tools to tried list
+                        for tool in tool_options:
+                            tried_tools.add(tool['name'])
+                        current_attempt += 1
+                        break
+                    
+                    try:
+                        tool_index = int(choice) - 1
+                        if 0 <= tool_index < len(tool_options):
+                            tool_info = tool_options[tool_index]
+                            
+                            # Generate installation commands
+                            install_cmds = generate_install_commands(tool_info['installation'])
+                            install_cmds = clean_and_validate_commands(install_cmds)
+
+                            # Ask user for installation approval
+                            print(f"\n   🎉 Selected tool: {tool_info['name']}")
+                            print(f"   📝 Full Description: {tool_info['description']}")
+                            print("\n   📦 Installation commands:")
+                            for cmd in install_cmds:
+                                print(f"      🔧 {cmd}")
+                            
+                            approval = input("\n   ❓ Proceed with installation? (y/n): ")
+                            
+                            if approval.lower() != 'y':
+                                # Add to tried tools and continue searching
+                                tried_tools.add(tool_info['name'])
+                                print("\n   ↩️ Going back to tool selection...")
+                                break
+                            
+                            # Proceed with installation (rest of the original code)
+                            return self._install_and_execute_tool(tool_info, install_cmds, user_input, required_tool, tool_general_description)
+                        
+                        else:
+                            print("   ❌ Invalid selection. Please try again.")
+                    except ValueError:
+                        print("   ❌ Invalid input. Please enter a number.")
+            
+            return "❌ Maximum search attempts reached. Could not find a suitable tool."
 
             # Install dependencies
             print("   ⚡ Installing dependencies...")
@@ -374,6 +471,84 @@ print("===OUTPUT_END===")
 
         except Exception as e:
             return f"❌ Error creating/executing tool: {str(e)}"
+
+    def _find_multiple_tools(self, user_input: str, steps: List[str], required_tool: str, excluded_tools: set) -> List[Dict]:
+        """Find multiple tool options, excluding already tried ones."""
+        from tool_searching import find_best_tools_with_exclusion
+        
+        # Use the enhanced search function that returns multiple options
+        tools = find_best_tools_with_exclusion(
+            question=user_input,
+            steps=steps,
+            search_keyword=required_tool,
+            excluded_tools=excluded_tools,
+            max_tools=3  # Return top 3 tools
+        )
+        
+        return tools
+
+    def _install_and_execute_tool(self, tool_info: Dict, install_cmds: List[str], user_input: str, required_tool: str, tool_general_description: str) -> str:
+        """Install dependencies and execute the selected tool."""
+        try:
+            # Install dependencies
+            print("   ⚡ Installing dependencies...")
+            for cmd in install_cmds:
+                print(f"      ⬇️ Running: {cmd}")
+                success, output = install_dependencies(cmd)
+                if not success:
+                    return f"Failed to install dependencies: {output}"
+
+            # Generate and validate code
+            print("   🎨 Generating code...")
+            code = generate_code(
+                language="python",
+                usage_guide=tool_info['usage'],
+                user_question=user_input,
+                search_keyword=required_tool,
+                tool_general_description=tool_general_description
+            )
+            
+            print("   🔍 Validating code...")
+            code = clean_and_validate_code(
+                code=code,
+                language="python",
+                user_question=user_input,
+                search_keyword=required_tool,
+                usage_guide=tool_info['usage'],
+                tool_general_description=tool_general_description
+            )
+
+            if not code:
+                return "Failed to generate valid code."
+
+            # Generate tool description and save
+            print("   📝 Generating tool description...")
+            description = generate_code_description(
+                user_question=user_input,
+                required_tool=required_tool,
+                code=code,
+                tool_name=tool_info['name'],
+                tool_general_description=tool_general_description
+            )
+
+            # Save and vectorize tool
+            print("   💾 Saving tool...")
+            tool_name = save_tool_code(description, code, tool_info['name'])
+            print("   🧠 Vectorizing tool for future use...")
+            vectorize_description(description, tool_info['name'])
+
+            # Execute new tool
+            print(f"   🚀 Executing new tool: {tool_name}")
+            success, output = execute_python_code(f"{tool_name}.py")
+            
+            if not success:
+                return f"Failed to execute new tool: {output}"
+                
+            # Return execution result
+            return f"New tool {tool_name} created and executed successfully. Output captured."
+
+        except Exception as e:
+            return f"❌ Error: {str(e)}"
 
 def main():
     """Main entry point for the Alita AI agent."""
