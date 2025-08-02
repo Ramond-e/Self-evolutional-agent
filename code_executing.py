@@ -55,9 +55,13 @@ def execute_python_code(file_name: str, capture_output: bool = False) -> Tuple[b
             - Union[str, object]: Output from the execution or error message
     """
     try:
-        # Construct full path to the Python file
-        tools_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'tools')
-        file_path = os.path.join(tools_dir, file_name)
+        # Check if file_name is already a full path (for temp files)
+        if os.path.exists(file_name):
+            file_path = file_name
+        else:
+            # Construct full path to the Python file in tools directory
+            tools_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'tools')
+            file_path = os.path.join(tools_dir, file_name)
         
         # Verify file exists
         if not os.path.exists(file_path):
