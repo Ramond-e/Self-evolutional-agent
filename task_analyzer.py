@@ -7,33 +7,52 @@ import json
 # Load environment variables
 load_dotenv()
 
-# OpenRouter API configuration
+# API KEY 选择逻辑 (OpenRouter优先，如果都没填则报错)
 OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY')
-if not OPENROUTER_API_KEY:
-    raise ValueError("OPENROUTER_API_KEY environment variable is not set. Please add it to your .env file.")
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 OPENROUTER_API_BASE_URL = os.getenv('OPENROUTER_API_BASE_URL')
+OPENAI_API_BASE_URL = os.getenv('OPENAI_API_BASE_URL')
+
+if OPENROUTER_API_KEY:
+    USE_API = 'openrouter'
+    API_KEY = OPENROUTER_API_KEY
+elif OPENAI_API_KEY:
+    USE_API = 'openai'
+    API_KEY = OPENAI_API_KEY
+else:
+    raise ValueError("Neither OPENROUTER_API_KEY nor OPENAI_API_KEY is set. Please add one of them to your .env file.")
 
 def get_model_response(prompt: str) -> str:
     """
-    Helper function to get response from Claude Sonnet model via OpenRouter API
+    Helper function to get response from LLM via OpenRouter API (优先) 或 OpenAI API
     """
-    headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-        "Content-Type": "application/json",
-    }
-    
-    payload = {
-        "model": "anthropic/claude-sonnet-4",
-        "messages": [
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ]
-    }
-    
-    response = requests.post(OPENROUTER_API_BASE_URL, json=payload, headers=headers)
-    
+    if USE_API == 'openrouter':
+        headers = {
+            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": "anthropic/claude-sonnet-4",
+            "messages": [
+                {"role": "user", "content": prompt}
+            ]
+        }
+        response = requests.post(OPENROUTER_API_BASE_URL, json=payload, headers=headers)
+    elif USE_API == 'openai':
+        headers = {
+            "Authorization": f"Bearer {OPENAI_API_KEY}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": "gpt-3.5-turbo",
+            "messages": [
+                {"role": "user", "content": prompt}
+            ]
+        }
+        response = requests.post(OPENAI_API_BASE_URL, json=payload, headers=headers)
+    else:
+        raise Exception("No valid API key found for either OpenRouter or OpenAI.")
+
     try:
         response_json = response.json()
         if response.status_code == 200:

@@ -30,11 +30,23 @@ pip install -r requirements.txt
 ```
 
 ### 2. Configure API Keys
-Create `.env` file:
+
+Create a `.env` file with at least ONE LLM key. You can add both (OpenRouter优先):
 ```env
-OPENROUTER_API_KEY=your_key_here
-GITHUB_API_TOKEN=your_token_here
+OPENROUTER_API_KEY=your_openrouter_key_here        # (优先使用)
+OPENROUTER_API_BASE_URL=https://openrouter.ai/api/v1/chat/completions
+OPENAI_API_KEY=your_openai_key_here                # (如未填OpenRouter则用此)
+OPENAI_API_BASE_URL=https://api.openai.com/v1/chat/completions
+GITHUB_API_TOKEN=your_github_token_here
 ```
+
+**API KEY与BASE URL优先级与变量说明：**
+- `OPENROUTER_API_KEY` 和 `OPENROUTER_API_BASE_URL` 均需设置才能使用 OpenRouter。
+- `OPENAI_API_KEY` 和 `OPENAI_API_BASE_URL` 均需设置才能使用 OpenAI（API BASE URL默认即可，需特殊代理等可自定义）。
+- 两类 key & base url 都填写时，优先调用 OpenRouter。
+- 只填写其中一组就用填写的。
+- 都没填会报错。
+
 
 ### 3. Run
 ```bash
