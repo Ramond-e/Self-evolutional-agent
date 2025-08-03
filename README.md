@@ -24,8 +24,8 @@
 
 ### 1. Clone & Install
 ```bash
-git clone https://github.com/yourusername/alita.git
-cd alita
+git clone https://github.com/Ramond-e/Self-evolutional-agent
+cd Self-evolutional-agent
 pip install -r requirements.txt
 ```
 
