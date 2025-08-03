@@ -158,15 +158,18 @@ class AlitaManagerV2:
     def _generate_direct_response(self, question: str) -> str:
         """Generate direct response using LLM when no tool is needed."""
         prompt = f"""
-        Provide a clear, helpful, and conversational answer to this question IN CHINESE:
+        Provide a clear, helpful, and conversational answer to the following question in Chinese:
+
         {question}
-        
-        Instructions:
-        - Be friendly and natural
-        - Provide accurate and helpful information
-        - Use Chinese for the response
-        - Do not mention that you're not using tools or external resources
-        - Just answer the question directly
+
+        Guidelines:
+        - Write your response in Chinese
+        - Use a friendly, natural, and casual tone, like you are chatting with a friend
+        - Avoid robotic or formulaic language
+        - If it's a simple greeting or small talk, reply warmly and conversationally
+        - Answer directly and accurately
+        - Do not mention you are an AI, or refer to any external tools or resources
+        - Only respond to the user's message, don't add explanations
         """
         return get_model_response(prompt)
 
